@@ -1,12 +1,1 @@
-# Navigable Graphs Python
-Python based research tool for studying navigable graphs for nearest neighbour search
-
-Using the SIFT dataset:
-```
-python navigable-graphs.py --dataset sift
-```
-
-Using synthetic data with 3D vectors:
-```
-python navigable-graphs.py --dataset synthetic --K 20 --k 5 --dim 3 --n 500 --nq 100 --ef 20 --M 2
-```
+![image](https://github.com/user-attachments/assets/5b2e1582-1dee-4b84-8254-938056cae8a2)

@@ -25,67 +25,50 @@ def read_fbin(filename, start_idx=0, chunk_size=None):
                           offset=start_idx * 4 * dim)
     return arr.reshape(nvecs, dim)
 
-def get_adjacency_list(graph: HNSW):
-    adj_list = {}
-    verts_count = len(graph.data)
-    for i, level in enumerate(graph._graphs):
-        for vert, neighbours in level.items():
-            if vert + i * verts_count not in adj_list:
-                adj_list[vert + i * verts_count] = set()
-            neighbours_ids = [neighbour_id + i * verts_count for neighbour_id, dist in neighbours.items()]
-            adj_list[vert + i * verts_count].update(neighbours_ids)
-            for neighbour_id in neighbours_ids:
-                if neighbour_id not in adj_list:
-                    adj_list[neighbour_id] = set()
-                adj_list[neighbour_id].add(vert + i * verts_count)
-    for level in range(1, len(graph._graphs)):
-        for i in range(verts_count):
-            v_from = i + level * verts_count
-            v_to = i + (level - 1) * verts_count
-            if v_to not in adj_list:
-                adj_list[v_to] = set()
-            if v_from not in adj_list:
-                adj_list[v_from] = set()
-            adj_list[v_from].add(v_to)
-            adj_list[v_to].add(v_from)
-    return adj_list
 
+visited = set()
+adj_list = {}
+topsort = []
+countt = 0
+def dfs(node, need_topsort=False):
+    global visited
+    global topsort
+    global adj_list
+    stack = [node]
+    visited.add(node)
+    second_time = set()
+    while len(stack) > 0:
+        node = stack.pop()
+        if node in second_time:
+            if need_topsort:
+                topsort.append(node)
+        else:
+            stack.append(node)
+            second_time.add(node)
+            for neighbor in adj_list.get(node, []):
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    stack.append(neighbor)
 
-def count_components(graph: HNSW):
-    components_count = 0
-    adj_list = get_adjacency_list(graph)
-    queue = Queue()
+def count_one_layer(forward_adj_list, reverse_adj_list):
+    global visited
+    global adj_list
+    global topsort
     visited = set()
-    for i in range(len(graph.data) * len(graph._graphs)):
-        if i not in visited:
-            components_count += 1
-            queue.put(i)
-            visited.add(i)
-            while not queue.empty():
-                v = queue.get()
-                for w in adj_list[v]:
-                    if w not in visited:
-                        queue.put(w)
-                        visited.add(w)
-    return components_count
-
-
-def count_one_layer(adj_list):
-    components_count = 0
-    visited = set()
-    queue = Queue()
+    topsort = []
+    adj_list = forward_adj_list
     for node in adj_list.keys():
         if node in visited:
             continue
-        components_count += 1
-        queue.put(node)
-        visited.add(node)
-        while not queue.empty():
-            v = queue.get()
-            for w in adj_list[v]:
-                if w not in visited:
-                    queue.put(w)
-                    visited.add(w)
+        dfs(node, True)
+    components_count = 0
+    topsort = topsort[::-1]
+    visited = set()
+    adj_list = reverse_adj_list
+    for node in topsort:
+        if node not in visited:
+            components_count += 1
+            dfs(node)
     return components_count
 
 def main():
@@ -109,23 +92,23 @@ def main():
     for x in tqdm(vecs):
         hnsw.add(x)
 
+    count = 0
+
     for level_id, level in enumerate(hnsw._graphs):
         # forming adjacency lists
         adj_list = {}
-        edges = set()
+        reverse_adj_list = {}
         for node, neighbours in level.items():
-            for neighbour_id, _ in neighbours.items():
-                assert (node, neighbour_id) not in edges
-                edges.add((node, neighbour_id))
-        for key in level.keys():
-            adj_list[key] = []
-        for v_from, v_to in edges:
-            adj_list[v_from].append(v_to)
-            if (v_to, v_from) not in edges:
-                adj_list[v_to].append(v_from)
-        print(f'components count for level {level_id}: {count_one_layer(adj_list)}')
+            adj_list[node] = list(neighbours.keys())
+        for from_node in level.keys():
+            for to_node in adj_list[from_node]:
+                if to_node not in reverse_adj_list:
+                    reverse_adj_list[to_node] = []
+                reverse_adj_list[to_node].append(from_node)
+        print(f'components count for level {level_id}: {count_one_layer(adj_list, reverse_adj_list)}')
+        count += count_one_layer(adj_list, reverse_adj_list)
 
-    print(f'components count: {count_components(hnsw)}')
+    print(f'components count: {count}')
 
 
 if __name__ == "__main__":
